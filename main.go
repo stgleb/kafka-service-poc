@@ -66,7 +66,6 @@ func processor(ctx context.Context, c *kafka.Consumer, p *kafka.Producer) {
 				log.Printf("error receive message %v", err)
 				continue
 			}
-			log.Println(string(msg.Value), msg.TopicPartition.Offset)
 			// process message
 			// TBD
 			// produce output message

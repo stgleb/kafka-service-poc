@@ -32,13 +32,18 @@ func monitor(_ context.Context, p *kafka.Producer) {
 }
 
 func pSync(p *kafka.Producer, maxRetries int) {
+	start := time.Now()
+	defer func() {
+		log.Printf("time spent for sync %v", time.Now().Sub(start))
+	}()
 	for i := 0; i < maxRetries; i++ {
-		if remains := p.Flush(int(defaultTimeout / time.Millisecond)); remains != 0 {
+		if remains := p.Flush(int(defaultTimeout / time.Millisecond) * 1 << i); remains != 0 {
 			log.Printf("message remains to flush %d, retry", remains)
 			continue
 		}
 		return
 	}
+
 	log.Printf("flush was not completed agter %d retries", maxRetries)
 }
 
@@ -47,10 +52,10 @@ func processor(ctx context.Context, c *kafka.Consumer, p *kafka.Producer) {
 	for {
 		select {
 		case <-ctx.Done():
-			pSync(p, 3)
+			pSync(p, 5)
 		case <-t.C:
 			log.Printf("producer queue len: %d", p.Len())
-			pSync(p, 3)
+			pSync(p, 5)
 			tps, err := c.Commit()
 			if err != nil {
 				log.Printf("error commiting offset %v", err)

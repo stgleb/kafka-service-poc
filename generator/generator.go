@@ -2,10 +2,11 @@ package main
 
 import (
 	"flag"
-	"github.com/confluentinc/confluent-kafka-go/kafka"
 	"log"
 	"sync/atomic"
 	"time"
+
+	"github.com/confluentinc/confluent-kafka-go/kafka"
 )
 
 var (
@@ -24,7 +25,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("create producer %v", err)
 	}
-	testMessage := []byte("message header")
+	testMessage := []byte("hello")
 	testMessage = append(testMessage, make([]byte, *messageSize - len(testMessage))...)
 	testKey := make([]byte, *keySize)
 	msg := &kafka.Message{

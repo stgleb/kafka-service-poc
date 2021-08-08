@@ -2,9 +2,7 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"flag"
-	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -16,48 +14,20 @@ import (
 
 const (
 	flushInterval  = time.Second * 10
-	defaultTimeout = time.Second * 10
+	defaultTimeout = time.Second
 )
 
 var (
 	bootstrapServers = flag.String("bootstrapServers", "localhost:9092", "bootstrap server url")
-	groupId          = flag.String("groupId", "test", "consumer group id")
+	groupId          = flag.String("groupId", "groupId", "consumer group id")
 
 	inputTopic  = flag.String("inputTopic", "input", "input topic name")
 	outputTopic = flag.String("outputTopic", "output", "output topic name")
-
-	keySize     = 1 << 4
-	messageSize = 1 << 10
 )
 
-func monitor(ctx context.Context, p *kafka.Producer) {
-	for event := range p.Events() {
-		select {
-		case <-ctx.Done():
-			return
-		default:
-			switch e := event.(type) {
-			case *kafka.Stats:
-				// Stats events are emitted as JSON (as string).
-				// Either directly forward the JSON to your
-				// statistics collector, or convert it to a
-				// map to extract fields of interest.
-				// The definition of the statistics JSON
-				// object can be found here:
-				// https://github.com/edenhill/librdkafka/blob/master/STATISTICS.md
-				var stats map[string]interface{}
-				if err := json.Unmarshal([]byte(e.String()), &stats); err != nil {
-					log.Printf("unmarshall %v", err)
-				}
-				fmt.Printf("Stats:"+
-					"\t%v messages (%v bytes) messages consumed\n"+
-					"\t%v producer queue len %v producer queue bytes len\n",
-					stats["rxmsgs"], stats["rxmsg_bytes"], stats["msg_cnt"], stats["msg_size"])
-			default:
-				fmt.Printf("Ignored %v\n", e)
-			}
-		}
-
+func monitor(_ context.Context, p *kafka.Producer) {
+	for range p.Events() {
+		// Skip events to prevent producer queue from oversizing.
 	}
 }
 
@@ -79,15 +49,16 @@ func processor(ctx context.Context, c *kafka.Consumer, p *kafka.Producer) {
 		case <-ctx.Done():
 			pSync(p, 3)
 		case <-t.C:
+			log.Printf("producer queue len: %d", p.Len())
 			pSync(p, 3)
 			tps, err := c.Commit()
 			if err != nil {
-				log.Printf("error commitig offset %v", err)
+				log.Printf("error commiting offset %v", err)
 				continue
 			}
 			log.Printf("Commit results:\n")
 			for _, tp := range tps {
-				log.Printf("\tcommit topc:partition:offset %s %d %d\n", *tp.Topic, tp.Partition, tp.Offset)
+				log.Printf("\tcommit topic:partition:offset %s %d %d\n", *tp.Topic, tp.Partition, tp.Offset)
 			}
 		default:
 			msg, err := c.ReadMessage(defaultTimeout)
@@ -95,12 +66,13 @@ func processor(ctx context.Context, c *kafka.Consumer, p *kafka.Producer) {
 				log.Printf("error receive message %v", err)
 				continue
 			}
+			log.Println(string(msg.Value), msg.TopicPartition.Offset)
 			// process message
 			// TBD
 			// produce output message
 			outputMsg := &kafka.Message{
 				TopicPartition: kafka.TopicPartition{
-					Topic: inputTopic,
+					Topic: outputTopic,
 				},
 				Key:   msg.Key,
 				Value: msg.Value,
@@ -111,8 +83,12 @@ func processor(ctx context.Context, c *kafka.Consumer, p *kafka.Producer) {
 				continue
 			}
 			// store offset for message that was read.
-			if _, err := c.StoreOffsets([]kafka.TopicPartition{msg.TopicPartition}); err != nil {
+			if tps, err := c.StoreOffsets([]kafka.TopicPartition{msg.TopicPartition}); err != nil {
 				log.Printf("store offsets %v\n", err)
+			} else {
+				for _, tp := range tps {
+					log.Printf("Stored topic partitions offset %s %d %d", *tp.Topic, tp.Partition, tp.Offset)
+				}
 			}
 		}
 	}
@@ -131,11 +107,28 @@ func main() {
 	if err != nil {
 		log.Fatalf("create consumer %v", err)
 	}
-	if err := consumer.Subscribe(*inputTopic, func(_ *kafka.Consumer, event kafka.Event) error {
-		log.Printf("rebalance has happend %v\n", event)
-		return nil
-	}); err != nil {
-		log.Fatalf("subcribe to topic %v", err)
+	meta, err := consumer.GetMetadata(inputTopic, true, int(defaultTimeout.Milliseconds()))
+	if err != nil {
+		log.Fatalf("get metadata %v", err)
+	}
+	var tps []kafka.TopicPartition
+	for _, partitionMeta := range meta.Topics[*inputTopic].Partitions {
+		tp := kafka.TopicPartition{
+			Topic:     inputTopic,
+			Partition: partitionMeta.ID,
+			Offset:    kafka.OffsetStored,
+		}
+		tps = append(tps, tp)
+	}
+	if err := consumer.Assign(tps); err != nil {
+		log.Fatalf("assign topic partitions %v", err)
+	}
+	tps, err = consumer.Assignment()
+	if err != nil {
+		log.Fatalf("error getting list of topic partitions assigned %v", tps)
+	}
+	for _, tp := range tps {
+		log.Printf("topic partitions offset %s %d %d", *tp.Topic, tp.Partition, tp.Offset)
 	}
 	producer, err := kafka.NewProducer(&kafka.ConfigMap{
 		"bootstrap.servers":      *bootstrapServers,

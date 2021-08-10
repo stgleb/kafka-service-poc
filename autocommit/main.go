@@ -19,10 +19,11 @@ const (
 
 var (
 	bootstrapServers = flag.String("bootstrapServers", "localhost:9092", "bootstrap server url")
-	groupId          = flag.String("groupId", "autoCommitGroup", "consumer group id")
+	groupId          = flag.String("groupId", "autoCommitConsumerGroupName", "consumer group id")
 
 	inputTopic  = flag.String("inputTopic", "inbound", "input topic name")
 	outputTopic = flag.String("outputTopic", "outbound", "output topic name")
+	partition   = flag.Int("partition", 0, "partition number")
 )
 
 func monitor(_ context.Context, p *kafka.Producer) {
@@ -66,7 +67,6 @@ func processor(ctx context.Context, c *kafka.Consumer, p *kafka.Producer) {
 				continue
 			}
 			totalCount++
-			log.Println(msg.TopicPartition.Offset)
 			// process message
 			// TBD
 			// produce output message
@@ -89,31 +89,27 @@ func processor(ctx context.Context, c *kafka.Consumer, p *kafka.Producer) {
 func main() {
 	flag.Parse()
 	cm := &kafka.ConfigMap{
-		"bootstrap.servers":        *bootstrapServers,
-		"group.id":                 *groupId,
-		"auto.offset.reset":        "earliest",
+		"bootstrap.servers": *bootstrapServers,
+		"group.id":          *groupId,
+		"auto.offset.reset": "earliest",
 	}
 	consumer, err := kafka.NewConsumer(cm)
 	if err != nil {
 		log.Fatalf("create consumer %v", err)
 	}
-	meta, err := consumer.GetMetadata(inputTopic, true, int(defaultTimeout.Milliseconds()))
-	if err != nil {
-		log.Fatalf("get metadata %v", err)
+	//meta, err := consumer.GetMetadata(inputTopic, true, int(defaultTimeout.Milliseconds()))
+	//if err != nil {
+	//	log.Fatalf("get metadata %v", err)
+	//}
+	tp := kafka.TopicPartition{
+		Topic:     inputTopic,
+		Partition: int32(*partition),
+		Offset:    kafka.OffsetBeginning,
 	}
-	var tps []kafka.TopicPartition
-	for _, partitionMeta := range meta.Topics[*inputTopic].Partitions {
-		tp := kafka.TopicPartition{
-			Topic:     inputTopic,
-			Partition: partitionMeta.ID,
-			Offset:    kafka.OffsetBeginning,
-		}
-		tps = append(tps, tp)
-	}
-	if err := consumer.Assign(tps); err != nil {
+	if err := consumer.Assign([]kafka.TopicPartition{tp}); err != nil {
 		log.Fatalf("assign topic partitions %v", err)
 	}
-	tps, err = consumer.Assignment()
+	tps, err := consumer.Assignment()
 	if err != nil {
 		log.Fatalf("error getting list of topic partitions assigned %v", tps)
 	}

@@ -9,7 +9,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/confluent-go/confluent-kafka-go/kafka"
+	"github.com/confluentinc/confluent-kafka-go/kafka"
 )
 
 const (
@@ -21,8 +21,8 @@ var (
 	bootstrapServers = flag.String("bootstrapServers", "localhost:9092", "bootstrap server url")
 	groupId          = flag.String("groupId", "manualGroupId", "consumer group id")
 
-	inputTopic  = flag.String("inputTopic", "input", "input topic name")
-	outputTopic = flag.String("outputTopic", "output", "output topic name")
+	inputTopic  = flag.String("inputTopic", "inbound", "input topic name")
+	outputTopic = flag.String("outputTopic", "outbound", "output topic name")
 )
 
 func monitor(_ context.Context, p *kafka.Producer) {
@@ -37,7 +37,7 @@ func pSync(p *kafka.Producer, maxRetries int) {
 		log.Printf("time spent for sync %v", time.Now().Sub(start))
 	}()
 	for i := 0; i < maxRetries; i++ {
-		if remains := p.Flush(int(defaultTimeout / time.Millisecond) * 1 << i); remains != 0 {
+		if remains := p.Flush(int(defaultTimeout/time.Millisecond) * 1 << i); remains != 0 {
 			log.Printf("message remains to flush %d, retry", remains)
 			continue
 		}
@@ -125,7 +125,7 @@ func main() {
 		tp := kafka.TopicPartition{
 			Topic:     inputTopic,
 			Partition: partitionMeta.ID,
-			Offset:    kafka.OffsetStored,
+			Offset:    kafka.OffsetBeginning,
 		}
 		tps = append(tps, tp)
 	}

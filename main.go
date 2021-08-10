@@ -19,10 +19,10 @@ const (
 
 var (
 	bootstrapServers = flag.String("bootstrapServers", "localhost:9092", "bootstrap server url")
-	groupId          = flag.String("groupId", "groupId", "consumer group id")
+	groupId          = flag.String("groupId", "xfg", "consumer group id")
 
 	inputTopic  = flag.String("inputTopic", "input", "input topic name")
-	outputTopic = flag.String("outputTopic", "output", "output topic name")
+	outputTopic = flag.String("outputTopic", "outputdfdfb", "output topic name")
 )
 
 func monitor(_ context.Context, p *kafka.Producer) {
@@ -49,6 +49,8 @@ func pSync(p *kafka.Producer, maxRetries int) {
 
 func processor(ctx context.Context, c *kafka.Consumer, p *kafka.Producer) {
 	t := time.NewTicker(flushInterval)
+	var totalCount int64
+	startTime := time.Now()
 	for {
 		select {
 		case <-ctx.Done():
@@ -65,7 +67,10 @@ func processor(ctx context.Context, c *kafka.Consumer, p *kafka.Producer) {
 			for _, tp := range tps {
 				log.Printf("\tcommit topic:partition:offset %s %d %d\n", *tp.Topic, tp.Partition, tp.Offset)
 			}
+			rps := float64(totalCount) / float64((time.Now().Sub(startTime).Milliseconds() / 1000))
+			log.Printf("rps %v\n", rps)
 		default:
+			totalCount++
 			msg, err := c.ReadMessage(defaultTimeout)
 			if err != nil {
 				log.Printf("error receive message %v", err)
@@ -90,8 +95,8 @@ func processor(ctx context.Context, c *kafka.Consumer, p *kafka.Producer) {
 			if tps, err := c.StoreOffsets([]kafka.TopicPartition{msg.TopicPartition}); err != nil {
 				log.Printf("store offsets %v\n", err)
 			} else {
-				for _, tp := range tps {
-					log.Printf("Stored topic partitions offset %s %d %d", *tp.Topic, tp.Partition, tp.Offset)
+				if len(tps) != 1 {
+					log.Fatalln(1)
 				}
 			}
 		}

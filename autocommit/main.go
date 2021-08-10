@@ -19,10 +19,10 @@ const (
 
 var (
 	bootstrapServers = flag.String("bootstrapServers", "localhost:9092", "bootstrap server url")
-	groupId          = flag.String("groupId", "autoCommitGroupId", "consumer group id")
+	groupId          = flag.String("groupId", "autoCommitGroup", "consumer group id")
 
-	inputTopic  = flag.String("inputTopic", "input", "input topic name")
-	outputTopic = flag.String("outputTopic", "output", "output topic name")
+	inputTopic  = flag.String("inputTopic", "inbound", "input topic name")
+	outputTopic = flag.String("outputTopic", "outbound", "output topic name")
 )
 
 func monitor(_ context.Context, p *kafka.Producer) {
@@ -37,7 +37,7 @@ func pSync(p *kafka.Producer, maxRetries int) {
 		log.Printf("time spent for sync %v", time.Now().Sub(start))
 	}()
 	for i := 0; i < maxRetries; i++ {
-		if remains := p.Flush(int(defaultTimeout / time.Millisecond) * 1 << i); remains != 0 {
+		if remains := p.Flush(int(defaultTimeout/time.Millisecond) * 1 << i); remains != 0 {
 			log.Printf("message remains to flush %d, retry", remains)
 			continue
 		}
@@ -60,12 +60,13 @@ func processor(ctx context.Context, c *kafka.Consumer, p *kafka.Producer) {
 			rps := float64(totalCount) / float64((time.Now().Sub(startTime).Milliseconds() / 1000))
 			log.Printf("rps %v\n", rps)
 		default:
-			totalCount++
 			msg, err := c.ReadMessage(defaultTimeout)
 			if err != nil {
-				//log.Printf("error receive message %v", err)
+				log.Printf("error receive message %v", err)
 				continue
 			}
+			totalCount++
+			log.Println(msg.TopicPartition.Offset)
 			// process message
 			// TBD
 			// produce output message
@@ -105,7 +106,7 @@ func main() {
 		tp := kafka.TopicPartition{
 			Topic:     inputTopic,
 			Partition: partitionMeta.ID,
-			Offset:    kafka.OffsetStored,
+			Offset:    kafka.OffsetBeginning,
 		}
 		tps = append(tps, tp)
 	}

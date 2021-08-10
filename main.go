@@ -73,7 +73,7 @@ func processor(ctx context.Context, c *kafka.Consumer, p *kafka.Producer) {
 			totalCount++
 			msg, err := c.ReadMessage(defaultTimeout)
 			if err != nil {
-				log.Printf("error receive message %v", err)
+				//log.Printf("error receive message %v", err)
 				continue
 			}
 			// process message

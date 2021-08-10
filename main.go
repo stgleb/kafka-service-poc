@@ -9,7 +9,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/confluentinc/confluent-kafka-go/kafka"
+	"github.com/confluent-go/confluent-kafka-go/kafka"
 )
 
 const (
@@ -19,10 +19,10 @@ const (
 
 var (
 	bootstrapServers = flag.String("bootstrapServers", "localhost:9092", "bootstrap server url")
-	groupId          = flag.String("groupId", "xfg", "consumer group id")
+	groupId          = flag.String("groupId", "manualGroupId", "consumer group id")
 
 	inputTopic  = flag.String("inputTopic", "input", "input topic name")
-	outputTopic = flag.String("outputTopic", "outputdfdfb", "output topic name")
+	outputTopic = flag.String("outputTopic", "output", "output topic name")
 )
 
 func monitor(_ context.Context, p *kafka.Producer) {
@@ -44,7 +44,7 @@ func pSync(p *kafka.Producer, maxRetries int) {
 		return
 	}
 
-	log.Printf("flush was not completed agter %d retries", maxRetries)
+	log.Printf("flush was not completed after %d retries", maxRetries)
 }
 
 func processor(ctx context.Context, c *kafka.Consumer, p *kafka.Producer) {
@@ -60,7 +60,7 @@ func processor(ctx context.Context, c *kafka.Consumer, p *kafka.Producer) {
 			pSync(p, 5)
 			tps, err := c.Commit()
 			if err != nil {
-				log.Printf("error commiting offset %v", err)
+				log.Printf("error committing offset %v", err)
 				continue
 			}
 			log.Printf("Commit results:\n")
